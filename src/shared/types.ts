@@ -24,6 +24,21 @@ export type Artifact = {
   createdAt: string;
 };
 
+export type TaskAttachment = {
+  id: string;
+  name: string;
+  path: string;
+  kind: "image" | "file" | "directory";
+  mimeType: string;
+  size: number;
+};
+
+export type PastedImageInput = {
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+};
+
 export type Task = {
   id: string;
   title: string;
@@ -39,6 +54,7 @@ export type Task = {
   error?: string;
   timeline: TaskEvent[];
   artifacts: Artifact[];
+  attachments?: TaskAttachment[];
 };
 
 export type AppConfig = {
@@ -108,6 +124,7 @@ export type CreateCronJobInput = {
 export type RunTaskInput = {
   prompt: string;
   workspacePath: string | null;
+  attachments?: TaskAttachment[];
 };
 
 export type HermesCheckResult = {
@@ -123,6 +140,11 @@ export type HermesCheckResult = {
 export type DesktopApi = {
   getState: () => Promise<AppState>;
   chooseWorkspace: () => Promise<AppState>;
+  chooseImages: () => Promise<TaskAttachment[]>;
+  chooseFiles: () => Promise<TaskAttachment[]>;
+  chooseFolders: () => Promise<TaskAttachment[]>;
+  savePastedImage: (input: PastedImageInput) => Promise<TaskAttachment>;
+  revealPath: (targetPath: string) => Promise<void>;
   setWorkspace: (workspacePath: string) => Promise<AppState>;
   updateConfig: (config: Partial<AppConfig>) => Promise<AppState>;
   syncHermesModelConfig: (config: ModelConfigInput) => Promise<AppState>;

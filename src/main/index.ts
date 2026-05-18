@@ -1,8 +1,8 @@
-import { app, BrowserWindow, Notification, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, Notification, dialog, ipcMain, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
-import { access, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { homedir } from "node:os";
@@ -15,8 +15,10 @@ import type {
   HermesCronJob,
   HermesSkill,
   ModelConfigInput,
+  PastedImageInput,
   RunTaskInput,
   Task,
+  TaskAttachment,
   TaskEvent
 } from "../shared/types";
 
@@ -36,6 +38,28 @@ let state: AppState = {
 };
 
 const runningTasks = new Map<string, ChildProcessWithoutNullStreams>();
+const imageMimeByExt: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".heic": "image/heic",
+  ".heif": "image/heif",
+  ".bmp": "image/bmp",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff"
+};
+const pastedImageExtByMime: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "image/heic": ".heic",
+  "image/heif": ".heif",
+  "image/bmp": ".bmp",
+  "image/tiff": ".tiff"
+};
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -92,7 +116,7 @@ function createWindow(): void {
     minWidth: 980,
     minHeight: 680,
     title: "HDM",
-    backgroundColor: "#f6f7f9",
+    backgroundColor: "#202020",
     titleBarStyle: "hiddenInset",
     webPreferences: {
       preload: join(__dirname, "../preload/index.mjs"),
@@ -159,19 +183,159 @@ function makeTaskTitle(prompt: string): string {
   return compact.length > 24 ? `${compact.slice(0, 24)}...` : compact || "未命名任务";
 }
 
+function fileMimeType(filePath: string): string {
+  return imageMimeByExt[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+async function attachmentFromPath(filePath: string): Promise<TaskAttachment | null> {
+  await access(filePath, constants.R_OK);
+  const fileStat = await stat(filePath);
+  if (!fileStat.isFile() && !fileStat.isDirectory()) return null;
+
+  const mimeType = fileStat.isDirectory() ? "inode/directory" : fileMimeType(filePath);
+
+  return {
+    id: id("attachment"),
+    name: basename(filePath),
+    path: filePath,
+    kind: fileStat.isDirectory() ? "directory" : mimeType.startsWith("image/") ? "image" : "file",
+    mimeType,
+    size: fileStat.isDirectory() ? 0 : fileStat.size
+  };
+}
+
+function imageAttachmentsOnly(attachments: Array<TaskAttachment | null>): TaskAttachment[] {
+  return attachments.filter((attachment): attachment is TaskAttachment => Boolean(attachment && attachment.kind === "image"));
+}
+
+async function chooseImages(): Promise<TaskAttachment[]> {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+    title: "选择图片",
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      {
+        name: "Images",
+        extensions: ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif", "bmp", "tif", "tiff"]
+      }
+    ]
+  });
+
+  if (result.canceled) return [];
+
+  const attachments = await Promise.all(result.filePaths.map((filePath) => attachmentFromPath(filePath)));
+  return imageAttachmentsOnly(attachments);
+}
+
+async function chooseFiles(): Promise<TaskAttachment[]> {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+    title: "选择文件",
+    properties: ["openFile", "multiSelections"]
+  });
+
+  if (result.canceled) return [];
+
+  const attachments = await Promise.all(result.filePaths.map((filePath) => attachmentFromPath(filePath)));
+  return attachments.filter((attachment): attachment is TaskAttachment => Boolean(attachment));
+}
+
+async function chooseFolders(): Promise<TaskAttachment[]> {
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+    title: "选择文件目录",
+    properties: ["openDirectory", "multiSelections"]
+  });
+
+  if (result.canceled) return [];
+
+  const attachments = await Promise.all(result.filePaths.map((filePath) => attachmentFromPath(filePath)));
+  return attachments.filter((attachment): attachment is TaskAttachment => Boolean(attachment));
+}
+
+async function savePastedImage(input: PastedImageInput): Promise<TaskAttachment> {
+  const mimeType = input.mimeType.trim().toLowerCase();
+  const extension = pastedImageExtByMime[mimeType];
+  if (!extension) {
+    throw new Error("不支持的图片格式。");
+  }
+
+  const match = input.dataUrl.match(/^data:image\/[a-z0-9.+-]+;base64,(.+)$/i);
+  if (!match) {
+    throw new Error("粘贴的图片数据无效。");
+  }
+
+  const attachmentsDir = join(app.getPath("userData"), "attachments");
+  await mkdir(attachmentsDir, { recursive: true });
+  const safeName = input.name.replace(/[^\w.-]+/g, "_").replace(/\.[^.]+$/, "") || "pasted-image";
+  const filePath = join(attachmentsDir, `${Date.now()}_${safeName}${extension}`);
+  await writeFile(filePath, Buffer.from(match[1], "base64"));
+
+  const attachment = await attachmentFromPath(filePath);
+  if (!attachment || attachment.kind !== "image") {
+    throw new Error("保存粘贴图片失败。");
+  }
+  return attachment;
+}
+
+async function revealPath(targetPath: string): Promise<void> {
+  await access(targetPath, constants.R_OK);
+  const fileStat = await stat(targetPath);
+  if (fileStat.isDirectory()) {
+    await shell.openPath(targetPath);
+    return;
+  }
+  shell.showItemInFolder(targetPath);
+}
+
+async function normalizeAttachments(input?: TaskAttachment[]): Promise<TaskAttachment[]> {
+  if (!input?.length) return [];
+
+  const seen = new Set<string>();
+  const attachments: TaskAttachment[] = [];
+  for (const item of input) {
+    if (!item.path || seen.has(item.path)) continue;
+    seen.add(item.path);
+
+    const attachment = await attachmentFromPath(item.path);
+    if (attachment) attachments.push({ ...attachment, id: item.id || attachment.id });
+  }
+  return attachments;
+}
+
 function decoratePrompt(input: RunTaskInput): string {
   const workspaceLine = input.workspacePath
     ? `Workspace 路径：${input.workspacePath}`
     : "Workspace 路径：未选择，请基于用户任务直接回答。";
+  const attachmentLines = (input.attachments ?? []).map((attachment, index) => {
+    const kindLabel = attachment.kind === "image" ? "图片" : attachment.kind === "directory" ? "目录" : "文件";
+    const mediaLine = attachment.kind === "image" ? `\n   media: MEDIA:${attachment.path}` : "";
+    return `${index + 1}. [${kindLabel}] ${attachment.name}\n   path: ${attachment.path}${mediaLine}`;
+  });
+  const attachmentBlock = attachmentLines.length
+    ? [
+        "",
+        "用户附带了以下附件。请先读取或分析附件，再结合用户文字任务回答。",
+        "图片附件可调用 vision_analyze，image_url 使用对应绝对路径；文件和目录附件请按路径读取、检查或遍历。",
+        ...attachmentLines
+      ]
+    : [];
 
   return [
     "你正在 Hermes AI Native Desktop 中运行。",
     workspaceLine,
     "请围绕该本地 Workspace 完成用户任务。输出应清晰、可执行，并在涉及文件修改时说明改动位置。",
+    ...attachmentBlock,
     "",
     "用户任务：",
     input.prompt
   ].join("\n");
+}
+
+function hermesArgsForTask(input: RunTaskInput, decoratedPrompt: string): string[] {
+  const firstImage = input.attachments?.find((attachment) => attachment.kind === "image");
+  if (firstImage) {
+    return ["chat", "-q", decoratedPrompt, "-Q", "--image", firstImage.path];
+  }
+
+  return ["-z", decoratedPrompt];
 }
 
 async function updateAndPersist(task: Task): Promise<void> {
@@ -704,8 +868,9 @@ async function syncHermesModelConfig(input: ModelConfigInput): Promise<AppState>
 }
 
 async function runTask(input: RunTaskInput): Promise<Task> {
-  const prompt = input.prompt.trim();
-  if (!prompt) {
+  const attachments = await normalizeAttachments(input.attachments);
+  const prompt = input.prompt.trim() || (attachments.length ? "请读取附件，并结合附件内容完成任务。" : "");
+  if (!prompt && attachments.length === 0) {
     throw new Error("任务内容不能为空。");
   }
 
@@ -720,11 +885,15 @@ async function runTask(input: RunTaskInput): Promise<Task> {
     provider: state.config.provider,
     logs: [],
     timeline: [],
-    artifacts: []
+    artifacts: [],
+    attachments
   };
 
   addEvent(task, "创建任务", "已记录用户任务，并准备传入 Hermes。", "done");
-  addEvent(task, "启动 Hermes Runner", "通过本机 Hermes CLI one-shot 模式执行。", "active");
+  if (attachments.length) {
+    addEvent(task, "附加附件", `已附加 ${attachments.length} 个附件，Hermes 可按路径读取或分析。`, "done");
+  }
+  addEvent(task, "启动 Hermes Runner", "通过本机 Hermes CLI 执行。", "active");
   await updateAndPersist(task);
 
   try {
@@ -737,8 +906,9 @@ async function runTask(input: RunTaskInput): Promise<Task> {
     return task;
   }
 
-  const decoratedPrompt = decoratePrompt(input);
-  const child = spawn(state.config.hermesPath, ["-z", decoratedPrompt], {
+  const runInput = { ...input, prompt, attachments };
+  const decoratedPrompt = decoratePrompt(runInput);
+  const child = spawn(state.config.hermesPath, hermesArgsForTask(runInput, decoratedPrompt), {
     cwd: input.workspacePath || undefined,
     env: process.env
   });
@@ -849,6 +1019,11 @@ app.whenReady().then(async () => {
   createWindow();
 
   ipcMain.handle("app:get-state", () => state);
+  ipcMain.handle("images:choose", () => chooseImages());
+  ipcMain.handle("files:choose", () => chooseFiles());
+  ipcMain.handle("folders:choose", () => chooseFolders());
+  ipcMain.handle("images:save-pasted", (_event, input: PastedImageInput) => savePastedImage(input));
+  ipcMain.handle("path:reveal", (_event, targetPath: string) => revealPath(targetPath));
 
   ipcMain.handle("workspace:choose", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {

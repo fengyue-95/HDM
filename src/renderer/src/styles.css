@@ -1824,6 +1824,19 @@ body {
   line-height: 1.65;
 }
 
+.messageAttachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+
+.detailAttachmentGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .inlineTimeline {
   margin-top: 12px;
   border-top: 1px solid var(--line);
@@ -1860,20 +1873,29 @@ body {
 
 .chatInputWrapper {
   display: flex;
-  align-items: flex-end;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 8px;
   background: #171717;
-  padding: 8px 8px 8px 14px;
+  padding: 8px;
 }
 
 .chatInputWrapper:focus-within {
   border-color: rgba(47, 116, 183, 0.75);
 }
 
+.chatTextRow {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .chatInputWrapper textarea {
   flex: 1;
+  min-width: 0;
   min-height: 34px;
   max-height: 150px;
   resize: none;
@@ -1889,19 +1911,116 @@ body {
   color: #777;
 }
 
+.attachButton,
 .sendButton {
   width: 36px;
   height: 36px;
   border-radius: 8px;
   display: grid;
   place-items: center;
+  flex: 0 0 auto;
+}
+
+.attachButton {
+  color: var(--muted);
+  background: #242424;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.attachButton:hover {
+  color: var(--ink);
+  background: #303030;
+  border-color: rgba(47, 116, 183, 0.45);
+}
+
+.sendButton {
   color: #fff;
   background: var(--blue);
-  flex: 0 0 auto;
 }
 
 .sendButton.stop {
   background: var(--red);
+}
+
+.attachmentTray {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.attachmentChip {
+  width: 210px;
+  min-width: 180px;
+  max-width: min(210px, 72vw);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: #202020;
+  padding: 6px;
+  color: var(--ink);
+}
+
+.attachmentChip img {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #111;
+}
+
+.attachmentIcon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #7db8ef;
+  background: #171717;
+}
+
+.attachmentChip span {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.attachmentChip strong,
+.attachmentChip small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentChip strong {
+  font-size: 12px;
+}
+
+.attachmentChip small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.attachmentChip button {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  background: transparent;
+}
+
+.attachmentChip button:hover {
+  color: var(--ink);
+  background: #303030;
 }
 
 .modelStrip {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import {
   Activity,
   Archive,
@@ -12,7 +12,9 @@ import {
   FolderOpen,
   GitBranch,
   History,
+  ImagePlus,
   Layers3,
+  Paperclip,
   type LucideIcon,
   Play,
   Plus,
@@ -39,6 +41,7 @@ import type {
   HermesSkill,
   ModelConfigInput,
   Task,
+  TaskAttachment,
   TaskEvent,
   TaskStatus
 } from "../../shared/types";
@@ -72,6 +75,7 @@ type ChatEntry = {
   role: "user" | "agent";
   title: string;
   content: string;
+  attachments?: TaskAttachment[];
   status?: TaskStatus;
   at: string;
 };
@@ -202,6 +206,45 @@ function createPreviewApi(): DesktopApi {
 
   return {
     getState: async () => previewState,
+    chooseImages: async () => [
+      {
+        id: `preview_attachment_${Date.now()}`,
+        name: "preview-image.png",
+        path: "/Users/fengyue/Desktop/preview-image.png",
+        kind: "image",
+        mimeType: "image/png",
+        size: 128_000
+      }
+    ],
+    chooseFiles: async () => [
+      {
+        id: `preview_file_${Date.now()}`,
+        name: "README.md",
+        path: "/Users/fengyue/Desktop/hermes-ai-native-desktop/README.md",
+        kind: "file",
+        mimeType: "application/octet-stream",
+        size: 24_000
+      }
+    ],
+    chooseFolders: async () => [
+      {
+        id: `preview_folder_${Date.now()}`,
+        name: "src",
+        path: "/Users/fengyue/Desktop/hermes-ai-native-desktop/src",
+        kind: "directory",
+        mimeType: "inode/directory",
+        size: 0
+      }
+    ],
+    savePastedImage: async (input) => ({
+      id: `preview_paste_${Date.now()}`,
+      name: input.name || "pasted-image.png",
+      path: "/Users/fengyue/Desktop/pasted-image.png",
+      kind: "image",
+      mimeType: input.mimeType,
+      size: Math.max(1, input.dataUrl.length)
+    }),
+    revealPath: async () => undefined,
     chooseWorkspace: async () => {
       previewState = {
         ...previewState,
@@ -321,6 +364,7 @@ function createPreviewApi(): DesktopApi {
         createdAt,
         provider: previewState.config.provider,
         model: previewState.config.model,
+        attachments: input.attachments,
         logs: ["[stdout] 预览模式：真实 Hermes 调用会在 Electron 应用窗口中执行。\n"],
         timeline: [
           {
@@ -460,6 +504,36 @@ function shortPath(path: string | null): string {
   return parts.length > 3 ? `.../${parts.slice(-2).join("/")}` : path;
 }
 
+function imageFileUrl(path: string): string {
+  return encodeURI(`file://${path}`).replace(/#/g, "%23").replace(/\?/g, "%3F");
+}
+
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentKindText(kind: TaskAttachment["kind"]): string {
+  if (kind === "image") return "图片";
+  if (kind === "directory") return "目录";
+  return "文件";
+}
+
+function attachmentMeta(attachment: TaskAttachment): string {
+  if (attachment.kind === "directory") return "目录";
+  return `${attachmentKindText(attachment.kind)} · ${formatBytes(attachment.size)}`;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error("读取图片失败。"));
+    reader.readAsDataURL(file);
+  });
+}
+
 function joinLogs(task?: Task): string {
   return task?.logs.join("").replace(/^\[(stdout|stderr)\]\s*/gm, "").trim() || "任务运行后，Hermes 输出会实时显示在这里。";
 }
@@ -473,6 +547,7 @@ export function App(): JSX.Element {
   const [activeView, setActiveView] = useState<ViewId>("workbench");
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState(defaultPrompt);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isCheckingHermes, setIsCheckingHermes] = useState(false);
@@ -597,6 +672,7 @@ export function App(): JSX.Element {
         role: "user",
         title: "You",
         content: activeTask.prompt,
+        attachments: activeTask.attachments,
         at: activeTask.createdAt
       },
       {
@@ -621,6 +697,78 @@ export function App(): JSX.Element {
   const trustedWorkspaces = state?.config.trustedWorkspaces ?? [];
   const isWorkspaceTrusted = Boolean(state?.currentWorkspace && trustedWorkspaces.includes(state.currentWorkspace));
   const hasWorkspacePermission = !state?.currentWorkspace || permissionGranted || isWorkspaceTrusted;
+  const canSendPrompt = Boolean(prompt.trim() || attachments.length);
+
+  function addAttachments(selected: TaskAttachment[], label: string): void {
+    if (!selected.length) return;
+    setAttachments((current) => {
+      const existing = new Set(current.map((item) => item.path));
+      return [...current, ...selected.filter((item) => !existing.has(item.path))].slice(0, 12);
+    });
+    setStatusMessage(`已添加 ${selected.length} 个${label}。`);
+    window.setTimeout(() => promptRef.current?.focus(), 0);
+  }
+
+  async function chooseImageAttachments(): Promise<void> {
+    try {
+      const selected = await desktopApi.chooseImages();
+      addAttachments(selected, "图片");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "选择图片失败。");
+    }
+  }
+
+  async function chooseFileAttachments(): Promise<void> {
+    try {
+      const selected = await desktopApi.chooseFiles();
+      addAttachments(selected, "文件");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "选择文件失败。");
+    }
+  }
+
+  async function chooseFolderAttachments(): Promise<void> {
+    try {
+      const selected = await desktopApi.chooseFolders();
+      addAttachments(selected, "目录");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "选择目录失败。");
+    }
+  }
+
+  async function handlePromptPaste(event: ClipboardEvent<HTMLTextAreaElement>): Promise<void> {
+    const imageFiles = Array.from(event.clipboardData.files).filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length) return;
+
+    event.preventDefault();
+    try {
+      const pasted = await Promise.all(
+        imageFiles.map(async (file, index) =>
+          desktopApi.savePastedImage({
+            name: file.name || `pasted-image-${index + 1}`,
+            mimeType: file.type || "image/png",
+            dataUrl: await fileToDataUrl(file)
+          })
+        )
+      );
+      addAttachments(pasted, "粘贴图片");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "粘贴图片失败。");
+    }
+  }
+
+  async function revealAttachment(attachment: TaskAttachment): Promise<void> {
+    try {
+      await desktopApi.revealPath(attachment.path);
+      setStatusMessage(`已打开${attachmentKindText(attachment.kind)}位置。`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "打开附件位置失败。");
+    }
+  }
+
+  function removeAttachment(id: string): void {
+    setAttachments((current) => current.filter((item) => item.id !== id));
+  }
 
   function applyPrompt(value: string): void {
     setActiveView("workbench");
@@ -632,6 +780,7 @@ export function App(): JSX.Element {
     if (command.clear) {
       setActiveTaskId(null);
       setPrompt("");
+      setAttachments([]);
       setStatusMessage("当前会话视图已清空。");
       return;
     }
@@ -689,6 +838,7 @@ export function App(): JSX.Element {
     setActiveView("workbench");
     setActiveTaskId(null);
     setPrompt("");
+    setAttachments([]);
     setStatusMessage("已创建新任务草稿。");
     window.setTimeout(() => promptRef.current?.focus(), 0);
   }
@@ -788,7 +938,7 @@ export function App(): JSX.Element {
   }
 
   async function runTask(): Promise<void> {
-    if (!state || !prompt.trim()) return;
+    if (!state || !canSendPrompt) return;
     if (!hasWorkspacePermission) {
       setActiveView("workbench");
       setStatusMessage("请先允许或信任当前 Workspace。");
@@ -796,14 +946,17 @@ export function App(): JSX.Element {
     }
 
     const taskPrompt = prompt.trim();
+    const taskAttachments = attachments;
     setIsStarting(true);
     try {
       const task = await desktopApi.runTask({
         prompt: taskPrompt,
-        workspacePath: state.currentWorkspace
+        workspacePath: state.currentWorkspace,
+        attachments: taskAttachments
       });
       setActiveTaskId(task.id);
       setPrompt("");
+      setAttachments([]);
       setStatusMessage(`任务「${task.title}」已启动。`);
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "任务启动失败。");
@@ -833,7 +986,7 @@ export function App(): JSX.Element {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       if (prompt.trim().startsWith("/")) return;
-      void runTask();
+      if (canSendPrompt) void runTask();
     }
   }
 
@@ -980,6 +1133,13 @@ export function App(): JSX.Element {
                           <span>{formatTime(entry.at)}</span>
                           {entry.status && <span className={`pill ${statusTone(entry.status)}`}>{statusText(entry.status)}</span>}
                         </div>
+                        {entry.attachments?.length ? (
+                          <div className="messageAttachments">
+                            {entry.attachments.map((attachment) => (
+                              <AttachmentPreview attachment={attachment} key={attachment.id} onReveal={() => void revealAttachment(attachment)} />
+                            ))}
+                          </div>
+                        ) : null}
                         <pre>{entry.content}</pre>
                         {entry.role === "agent" && activeTask?.timeline.length ? (
                           <div className="inlineTimeline">
@@ -1025,24 +1185,48 @@ export function App(): JSX.Element {
                 </div>
               )}
               <div className="chatInputWrapper">
-                <textarea
-                  ref={promptRef}
-                  aria-label="任务输入"
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  onKeyDown={handlePromptKeyDown}
-                  placeholder="向 Hermes 描述任务，或输入 / 调出快捷命令..."
-                  rows={1}
-                />
-                {runningTask ? (
-                  <button className="sendButton stop" type="button" title="停止" onClick={cancelActiveTask}>
-                    <Square size={16} />
-                  </button>
-                ) : (
-                  <button className="sendButton" type="button" title="发送" onClick={runTask} disabled={isStarting || !prompt.trim() || prompt.trim().startsWith("/")}>
-                    <Send size={16} />
-                  </button>
+                {attachments.length > 0 && (
+                  <div className="attachmentTray">
+                    {attachments.map((attachment) => (
+                      <AttachmentPreview
+                        attachment={attachment}
+                        key={attachment.id}
+                        onRemove={() => removeAttachment(attachment.id)}
+                        onReveal={() => void revealAttachment(attachment)}
+                      />
+                    ))}
+                  </div>
                 )}
+                <div className="chatTextRow">
+                  <button className="attachButton" type="button" title="添加图片" onClick={() => void chooseImageAttachments()} disabled={Boolean(runningTask) || isStarting}>
+                    <ImagePlus size={17} />
+                  </button>
+                  <button className="attachButton" type="button" title="选择文件" onClick={() => void chooseFileAttachments()} disabled={Boolean(runningTask) || isStarting}>
+                    <Paperclip size={17} />
+                  </button>
+                  <button className="attachButton" type="button" title="选择目录" onClick={() => void chooseFolderAttachments()} disabled={Boolean(runningTask) || isStarting}>
+                    <FolderOpen size={17} />
+                  </button>
+                  <textarea
+                    ref={promptRef}
+                    aria-label="任务输入"
+                    value={prompt}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    onKeyDown={handlePromptKeyDown}
+                    onPaste={(event) => void handlePromptPaste(event)}
+                    placeholder="输入文字任务，也可以粘贴图片或添加附件..."
+                    rows={1}
+                  />
+                  {runningTask ? (
+                    <button className="sendButton stop" type="button" title="停止" onClick={cancelActiveTask}>
+                      <Square size={16} />
+                    </button>
+                  ) : (
+                    <button className="sendButton" type="button" title="发送" onClick={runTask} disabled={isStarting || !canSendPrompt || prompt.trim().startsWith("/")}>
+                      <Send size={16} />
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="modelStrip">
                 <span className={`pill ${checkResult?.ok ? "green" : "amber"}`}>
@@ -1094,6 +1278,7 @@ export function App(): JSX.Element {
               setActiveTaskId(task.id);
               setActiveView("tasks");
             }}
+            revealAttachment={revealAttachment}
             rerunTask={rerunTask}
             startRoutine={(routinePrompt) => {
               setPrompt(routinePrompt);
@@ -1160,6 +1345,42 @@ function Timeline({ events }: { events: TaskEvent[] }): JSX.Element {
   );
 }
 
+function AttachmentPreview({
+  attachment,
+  onRemove,
+  onReveal
+}: {
+  attachment: TaskAttachment;
+  onRemove?: () => void;
+  onReveal?: () => void;
+}): JSX.Element {
+  const isImage = attachment.kind === "image";
+
+  return (
+    <div className="attachmentChip">
+      {isImage ? (
+        <img src={imageFileUrl(attachment.path)} alt={attachment.name} />
+      ) : (
+        <div className="attachmentIcon">{attachment.kind === "directory" ? <FolderOpen size={18} /> : <FileText size={18} />}</div>
+      )}
+      <span title={attachment.path}>
+        <strong>{attachment.name}</strong>
+        <small>{attachmentMeta(attachment)}</small>
+      </span>
+      {onReveal && (
+        <button type="button" title="在 Finder 中打开" onClick={onReveal}>
+          <FolderOpen size={14} />
+        </button>
+      )}
+      {onRemove && (
+        <button type="button" title="移除附件" onClick={onRemove}>
+          <X size={14} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SecondaryView({
   view,
   state,
@@ -1193,6 +1414,7 @@ function SecondaryView({
   revokeWorkspaceTrust,
   openArtifact,
   openTask,
+  revealAttachment,
   rerunTask,
   startRoutine
 }: {
@@ -1228,6 +1450,7 @@ function SecondaryView({
   revokeWorkspaceTrust: (workspacePath: string) => Promise<void>;
   openArtifact: (artifact: ArtifactPreview) => void;
   openTask: (task: Task) => void;
+  revealAttachment: (attachment: TaskAttachment) => Promise<void>;
   rerunTask: (task: Task) => Promise<void>;
   startRoutine: (prompt: string) => void;
 }): JSX.Element {
@@ -1483,6 +1706,16 @@ function SecondaryView({
                   <h3>任务内容</h3>
                   <p>{activeTask.prompt}</p>
                 </section>
+                {activeTask.attachments?.length ? (
+                  <section>
+                    <h3>附件</h3>
+                    <div className="detailAttachmentGrid">
+                      {activeTask.attachments.map((attachment) => (
+                        <AttachmentPreview attachment={attachment} key={attachment.id} onReveal={() => void revealAttachment(attachment)} />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
                 <section>
                   <h3>结果</h3>
                   <pre>{activeTask.result || joinLogs(activeTask)}</pre>

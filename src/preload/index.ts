@@ -1,9 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppConfig, CreateCronJobInput, DesktopApi, ModelConfigInput, RunTaskInput, Task } from "../shared/types";
+import type { AppConfig, CreateCronJobInput, DesktopApi, ModelConfigInput, PastedImageInput, RunTaskInput, Task } from "../shared/types";
 
 const api: DesktopApi = {
   getState: () => ipcRenderer.invoke("app:get-state"),
   chooseWorkspace: () => ipcRenderer.invoke("workspace:choose"),
+  chooseImages: () => ipcRenderer.invoke("images:choose"),
+  chooseFiles: () => ipcRenderer.invoke("files:choose"),
+  chooseFolders: () => ipcRenderer.invoke("folders:choose"),
+  savePastedImage: (input: PastedImageInput) => ipcRenderer.invoke("images:save-pasted", input),
+  revealPath: (targetPath: string) => ipcRenderer.invoke("path:reveal", targetPath),
   setWorkspace: (workspacePath: string) => ipcRenderer.invoke("workspace:set", workspacePath),
   updateConfig: (config: Partial<AppConfig>) => ipcRenderer.invoke("config:update", config),
   syncHermesModelConfig: (config: ModelConfigInput) => ipcRenderer.invoke("hermes:sync-model-config", config),
