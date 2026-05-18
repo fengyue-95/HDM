@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hermes AI Native Desktop Prototype</title>
+    <style>
+      :root {
+        --bg: #f5f3ee;
+        --panel: #fffdfa;
+        --panel-2: #f0eee7;
+        --ink: #242424;
+        --muted: #6e6a61;
+        --line: #ded8cc;
+        --green: #1f7a52;
+        --green-soft: #dff1e8;
+        --blue: #2468a8;
+        --blue-soft: #e0ecf7;
+        --amber: #ad741e;
+        --amber-soft: #f5e5c8;
+        --red: #a94335;
+        --red-soft: #f4ded9;
+        --shadow: 0 16px 40px rgba(44, 36, 24, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 252px minmax(0, 1fr) 344px;
+      }
+
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: #ebe7dc;
+        padding: 18px 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 4px 8px 12px;
+      }
+
+      .brand-mark {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        background:
+          linear-gradient(135deg, rgba(31, 122, 82, 0.95), rgba(36, 104, 168, 0.9)),
+          #1f7a52;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 800;
+      }
+
+      .brand-title {
+        font-weight: 760;
+        line-height: 1.1;
+      }
+
+      .brand-subtitle {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 3px;
+      }
+
+      .nav {
+        display: grid;
+        gap: 6px;
+      }
+
+      .nav button,
+      .workspace-card,
+      .mini-card,
+      .artifact,
+      .task-row {
+        border-radius: 8px;
+      }
+
+      .nav button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 38px;
+        padding: 0 10px;
+        background: transparent;
+        color: #3a372f;
+        text-align: left;
+      }
+
+      .nav button.active {
+        background: var(--panel);
+        box-shadow: inset 3px 0 0 var(--green);
+        font-weight: 700;
+      }
+
+      .icon {
+        width: 22px;
+        height: 22px;
+        display: grid;
+        place-items: center;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.65);
+        color: var(--muted);
+        font-size: 13px;
+        flex: 0 0 auto;
+      }
+
+      .sidebar-section {
+        display: grid;
+        gap: 10px;
+      }
+
+      .section-label {
+        padding: 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .workspace-card {
+        background: var(--panel);
+        border: 1px solid rgba(222, 216, 204, 0.9);
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .path {
+        color: var(--muted);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+
+      .status-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 24px;
+        padding: 0 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .pill.green {
+        background: var(--green-soft);
+        color: var(--green);
+      }
+
+      .pill.blue {
+        background: var(--blue-soft);
+        color: var(--blue);
+      }
+
+      .pill.amber {
+        background: var(--amber-soft);
+        color: var(--amber);
+      }
+
+      .pill.red {
+        background: var(--red-soft);
+        color: var(--red);
+      }
+
+      .main {
+        min-width: 0;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+
+      .topbar {
+        height: 66px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(255, 253, 250, 0.86);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+      }
+
+      .topbar h1 {
+        margin: 0;
+        font-size: 18px;
+        line-height: 1.2;
+      }
+
+      .topbar p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .btn {
+        min-height: 36px;
+        border-radius: 8px;
+        padding: 0 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: var(--panel-2);
+        color: var(--ink);
+        border: 1px solid transparent;
+        font-weight: 700;
+        flex: 0 0 auto;
+        white-space: nowrap;
+      }
+
+      .btn.primary {
+        background: var(--ink);
+        color: white;
+      }
+
+      .btn.ghost {
+        background: transparent;
+        border-color: var(--line);
+      }
+
+      .workspace {
+        min-width: 0;
+        padding: 22px 24px 28px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 18px;
+      }
+
+      .composer {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .composer-head {
+        padding: 14px 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .composer-head strong {
+        font-size: 14px;
+      }
+
+      textarea {
+        display: block;
+        width: 100%;
+        min-height: 112px;
+        resize: vertical;
+        border: 0;
+        outline: 0;
+        padding: 16px;
+        color: var(--ink);
+        background: var(--panel);
+      }
+
+      .composer-foot {
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        background: #faf8f2;
+        border-top: 1px solid var(--line);
+      }
+
+      .context-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .content-grid {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+        gap: 18px;
+      }
+
+      .panel {
+        min-width: 0;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .panel-title {
+        min-height: 48px;
+        padding: 0 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid var(--line);
+        font-weight: 760;
+      }
+
+      .timeline {
+        padding: 10px 16px 16px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .event {
+        display: grid;
+        grid-template-columns: 26px 1fr auto;
+        gap: 10px;
+        align-items: start;
+        padding: 11px 0;
+        border-bottom: 1px solid #eee8dd;
+      }
+
+      .event:last-child {
+        border-bottom: 0;
+      }
+
+      .dot {
+        width: 14px;
+        height: 14px;
+        margin-top: 3px;
+        border-radius: 50%;
+        background: var(--line);
+        box-shadow: 0 0 0 4px #f4f1ea;
+      }
+
+      .dot.done {
+        background: var(--green);
+      }
+
+      .dot.active {
+        background: var(--blue);
+      }
+
+      .dot.waiting {
+        background: var(--amber);
+      }
+
+      .event strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .event span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .time {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .result {
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .result h2 {
+        margin: 0;
+        font-size: 17px;
+      }
+
+      .result p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      .rightbar {
+        border-left: 1px solid var(--line);
+        background: #f9f6ef;
+        padding: 18px 14px;
+        display: grid;
+        grid-template-rows: auto auto 1fr auto;
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .mini-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        padding: 14px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .mini-card h3 {
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .meta {
+        min-height: 62px;
+        border-radius: 8px;
+        background: #f4f1ea;
+        padding: 10px;
+      }
+
+      .meta span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .meta strong {
+        display: block;
+        margin-top: 5px;
+        font-size: 15px;
+      }
+
+      .permission {
+        background: #fff9eb;
+        border-color: #e7c57e;
+      }
+
+      .permission-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .artifact-list,
+      .task-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .artifact,
+      .task-row {
+        border: 1px solid var(--line);
+        background: #fbfaf6;
+        padding: 10px;
+      }
+
+      .artifact strong,
+      .task-row strong {
+        display: block;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .artifact span,
+      .task-row span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .settings {
+        display: grid;
+        gap: 8px;
+      }
+
+      .field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .field label {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .field input {
+        width: 100%;
+        min-height: 36px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: #fbfaf6;
+        padding: 0 10px;
+        color: var(--ink);
+      }
+
+      .mobile-tabs {
+        display: none;
+      }
+
+      @media (max-width: 1180px) {
+        .app {
+          grid-template-columns: 220px minmax(0, 1fr);
+        }
+
+        .rightbar {
+          display: none;
+        }
+
+        .content-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 820px) {
+        .app {
+          grid-template-columns: 1fr;
+        }
+
+        .sidebar {
+          display: none;
+        }
+
+        .topbar {
+          height: auto;
+          min-height: 68px;
+          padding: 14px 16px;
+          align-items: flex-start;
+          gap: 12px;
+        }
+
+        .toolbar {
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        .workspace {
+          padding: 16px;
+        }
+
+        .composer-foot {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .mobile-tabs {
+          display: flex;
+          gap: 8px;
+          overflow-x: auto;
+          padding: 10px 16px;
+          border-bottom: 1px solid var(--line);
+          background: #ebe7dc;
+        }
+
+        .mobile-tabs .btn {
+          flex: 0 0 auto;
+        }
+      }
+
+      @media (max-width: 560px) {
+        .topbar {
+          flex-direction: column;
+        }
+
+        .toolbar,
+        .composer-foot .btn {
+          width: 100%;
+        }
+
+        .toolbar .btn,
+        .composer-foot .btn {
+          justify-content: center;
+        }
+
+        .event {
+          grid-template-columns: 20px 1fr;
+        }
+
+        .time {
+          grid-column: 2;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">H</div>
+          <div>
+            <div class="brand-title">Hermes Desktop</div>
+            <div class="brand-subtitle">Local AI Workbench</div>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主导航">
+          <button class="active" type="button"><span class="icon">W</span>工作台</button>
+          <button type="button"><span class="icon">F</span>工作区</button>
+          <button type="button"><span class="icon">T</span>任务历史</button>
+          <button type="button"><span class="icon">A</span>产物</button>
+          <button type="button"><span class="icon">R</span>自动流程</button>
+          <button type="button"><span class="icon">S</span>设置</button>
+        </nav>
+
+        <div class="sidebar-section">
+          <div class="section-label">当前 Workspace</div>
+          <div class="workspace-card">
+            <div class="status-line">
+              <strong>hermes-ai-native-desktop</strong>
+              <span class="pill green">已连接</span>
+            </div>
+            <div class="path">/Users/fengyue/Desktop/hermes-ai-native-desktop</div>
+            <button class="btn ghost" type="button">切换目录</button>
+          </div>
+        </div>
+
+        <div class="sidebar-section">
+          <div class="section-label">最近任务</div>
+          <div class="task-list">
+            <div class="task-row">
+              <strong>生成应用原型</strong>
+              <span>运行中 · 4 个事件</span>
+            </div>
+            <div class="task-row">
+              <strong>验证 Hermes CLI</strong>
+              <span>已完成 · deepseek-chat</span>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="mobile-tabs">
+          <button class="btn primary" type="button">工作台</button>
+          <button class="btn" type="button">任务</button>
+          <button class="btn" type="button">产物</button>
+          <button class="btn" type="button">设置</button>
+        </div>
+
+        <header class="topbar">
+          <div>
+            <h1>本地 AI 工作台</h1>
+            <p>把 Workspace、任务、权限和产物组织成一个可复用的执行闭环。</p>
+          </div>
+          <div class="toolbar">
+            <span class="pill blue">Hermes v0.13.0</span>
+            <button class="btn ghost" type="button">打开日志</button>
+            <button class="btn primary" type="button">新任务</button>
+          </div>
+        </header>
+
+        <section class="workspace">
+          <div class="composer">
+            <div class="composer-head">
+              <strong>AI Task</strong>
+              <span class="pill green">DeepSeek · deepseek-chat</span>
+            </div>
+            <textarea aria-label="任务输入">帮我阅读当前 Workspace，设计一个 macOS 本地 AI-native 桌面应用的 MVP 原型，并列出首版功能。</textarea>
+            <div class="composer-foot">
+              <div class="context-chips">
+                <span class="pill blue">包含 README</span>
+                <span class="pill amber">需要权限确认</span>
+                <span class="pill green">保存任务记录</span>
+              </div>
+              <button class="btn primary" type="button">运行任务</button>
+            </div>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel">
+              <div class="panel-title">
+                <span>执行时间线</span>
+                <span class="pill amber">等待确认</span>
+              </div>
+              <div class="timeline">
+                <div class="event">
+                  <div class="dot done"></div>
+                  <div>
+                    <strong>读取 Workspace 背景</strong>
+                    <span>已解析 README 和 Conversation Notes，确认产品不是聊天壳，而是本地 Agent 工作台。</span>
+                  </div>
+                  <div class="time">19:25</div>
+                </div>
+                <div class="event">
+                  <div class="dot done"></div>
+                  <div>
+                    <strong>生成任务计划</strong>
+                    <span>拆分为 Workbench、Workspace、Tasks、Artifacts、Routines 和 Settings 六个模块。</span>
+                  </div>
+                  <div class="time">19:28</div>
+                </div>
+                <div class="event">
+                  <div class="dot active"></div>
+                  <div>
+                    <strong>启动 Hermes Runner</strong>
+                    <span>准备通过 CLI one-shot 运行。当前需要用户允许读取 Workspace 文件。</span>
+                  </div>
+                  <div class="time">现在</div>
+                </div>
+                <div class="event">
+                  <div class="dot waiting"></div>
+                  <div>
+                    <strong>保存产物</strong>
+                    <span>完成后保存 Markdown 原型、任务日志和可复跑参数。</span>
+                  </div>
+                  <div class="time">下一步</div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title">
+                <span>结果草稿</span>
+                <button class="btn ghost" type="button">导出</button>
+              </div>
+              <div class="result">
+                <h2>MVP 建议：先做真实可用的小闭环</h2>
+                <p>第一版应该优先跑通选择 Workspace、输入任务、Hermes 执行、权限确认、实时日志、任务历史和结果保存。只要这个闭环成立，后续的 Routine、索引、MCP 长连接都会有落点。</p>
+                <div class="context-chips">
+                  <span class="pill green">可复跑</span>
+                  <span class="pill blue">可导出</span>
+                  <span class="pill amber">含权限记录</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <aside class="rightbar">
+        <section class="mini-card">
+          <h3>运行状态</h3>
+          <div class="meta-grid">
+            <div class="meta">
+              <span>Provider</span>
+              <strong>DeepSeek</strong>
+            </div>
+            <div class="meta">
+              <span>Model</span>
+              <strong>deepseek-chat</strong>
+            </div>
+            <div class="meta">
+              <span>Mode</span>
+              <strong>CLI one-shot</strong>
+            </div>
+            <div class="meta">
+              <span>Store</span>
+              <strong>Local</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="mini-card permission">
+          <h3>权限请求</h3>
+          <p class="path">Hermes 想读取当前 Workspace 内的 Markdown 文件，用于生成应用原型。</p>
+          <div class="permission-actions">
+            <button class="btn primary" type="button">允许本次</button>
+            <button class="btn ghost" type="button">拒绝</button>
+          </div>
+        </section>
+
+        <section class="mini-card">
+          <h3>产物</h3>
+          <div class="artifact-list">
+            <div class="artifact">
+              <strong>PROTOTYPE.md</strong>
+              <span>产品结构与功能清单</span>
+            </div>
+            <div class="artifact">
+              <strong>index.html</strong>
+              <span>静态可交互原型</span>
+            </div>
+            <div class="artifact">
+              <strong>task-log.json</strong>
+              <span>后续实现建议保存的运行记录</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="mini-card">
+          <h3>设置预览</h3>
+          <div class="settings">
+            <div class="field">
+              <label for="hermes-path">Hermes Path</label>
+              <input id="hermes-path" value="/Users/fengyue/.hermes/hermes-agent/venv/bin/hermes" />
+            </div>
+            <button class="btn ghost" type="button">检测连接</button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </body>
+</html>
