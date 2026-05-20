@@ -4,13 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="a34e42a8-b2a0-4908-831b-aa6f1f84e916" name="Changes" comment="文件支持">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/preload/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/preload/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/renderer/src/App.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/App.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/renderer/src/styles.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/renderer/src/styles.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/shared/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/shared/types.ts" afterDir="false" />
+    <list default="true" id="a34e42a8-b2a0-4908-831b-aa6f1f84e916" name="Changes" comment="feat(core): 添加文件支持和任务管理功能&#10;&#10;- 集成 Qwen 和 DashScope API 支持，添加相关模型配置&#10;- 实现任务删除功能，包括主进程和渲染进程的 IPC 通信&#10;- 优化 Hermes CLI 执行流程，添加详细的执行状态跟踪&#10;- 新增任务执行过程展示界面，实时显示 stdout 和 stderr 输出&#10;- 添加进程日志格式化功能，改进任务执行状态监控&#10;- 更新 UI 界面，增加删除按钮和执行过程面板">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,7 +68,7 @@
       <updated>1779120472835</updated>
       <workItem from="1779120473959" duration="54000" />
       <workItem from="1779123437387" duration="107000" />
-      <workItem from="1779123558083" duration="584000" />
+      <workItem from="1779123558083" duration="1272000" />
     </task>
     <task id="LOCAL-00001" summary="文件支持">
       <option name="closed" value="true" />
@@ -83,7 +78,15 @@
       <option name="project" value="LOCAL" />
       <updated>1779123464144</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="feat(core): 添加文件支持和任务管理功能&#10;&#10;- 集成 Qwen 和 DashScope API 支持，添加相关模型配置&#10;- 实现任务删除功能，包括主进程和渲染进程的 IPC 通信&#10;- 优化 Hermes CLI 执行流程，添加详细的执行状态跟踪&#10;- 新增任务执行过程展示界面，实时显示 stdout 和 stderr 输出&#10;- 添加进程日志格式化功能，改进任务执行状态监控&#10;- 更新 UI 界面，增加删除按钮和执行过程面板">
+      <option name="closed" value="true" />
+      <created>1779291773231</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1779291773231</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -102,6 +105,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="文件支持" />
-    <option name="LAST_COMMIT_MESSAGE" value="文件支持" />
+    <MESSAGE value="feat(core): 添加文件支持和任务管理功能&#10;&#10;- 集成 Qwen 和 DashScope API 支持，添加相关模型配置&#10;- 实现任务删除功能，包括主进程和渲染进程的 IPC 通信&#10;- 优化 Hermes CLI 执行流程，添加详细的执行状态跟踪&#10;- 新增任务执行过程展示界面，实时显示 stdout 和 stderr 输出&#10;- 添加进程日志格式化功能，改进任务执行状态监控&#10;- 更新 UI 界面，增加删除按钮和执行过程面板" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat(core): 添加文件支持和任务管理功能&#10;&#10;- 集成 Qwen 和 DashScope API 支持，添加相关模型配置&#10;- 实现任务删除功能，包括主进程和渲染进程的 IPC 通信&#10;- 优化 Hermes CLI 执行流程，添加详细的执行状态跟踪&#10;- 新增任务执行过程展示界面，实时显示 stdout 和 stderr 输出&#10;- 添加进程日志格式化功能，改进任务执行状态监控&#10;- 更新 UI 界面，增加删除按钮和执行过程面板" />
   </component>
 </project>
