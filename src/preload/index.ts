@@ -19,6 +19,7 @@ const api: DesktopApi = {
   listSkills: () => ipcRenderer.invoke("hermes:skills:list"),
   runTask: (input: RunTaskInput) => ipcRenderer.invoke("task:run", input),
   cancelTask: (taskId: string) => ipcRenderer.invoke("task:cancel", taskId),
+  deleteTask: (taskId: string) => ipcRenderer.invoke("task:delete", taskId),
   onTaskUpdated: (callback: (task: Task) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, task: Task) => callback(task);
     ipcRenderer.on("task:updated", listener);

@@ -155,5 +155,6 @@ export type DesktopApi = {
   listSkills: () => Promise<HermesSkill[]>;
   runTask: (input: RunTaskInput) => Promise<Task>;
   cancelTask: (taskId: string) => Promise<Task | null>;
+  deleteTask: (taskId: string) => Promise<AppState>;
   onTaskUpdated: (callback: (task: Task) => void) => () => void;
 };

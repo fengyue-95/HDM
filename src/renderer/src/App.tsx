@@ -98,7 +98,7 @@ const modelPresets: ModelPreset[] = [
   },
   {
     provider: "OpenRouter",
-    models: ["openai/gpt-4.1", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat"],
+    models: ["openai/gpt-4.1", "anthropic/claude-3.5-sonnet", "deepseek/deepseek-chat", "qwen/qwen3-coder"],
     baseUrl: "https://openrouter.ai/api/v1"
   },
   {
@@ -107,8 +107,13 @@ const modelPresets: ModelPreset[] = [
     baseUrl: "https://api.anthropic.com"
   },
   {
+    provider: "Qwen",
+    models: ["qwen3-coder-plus", "qwen3-coder", "qwen-plus", "qwen-max", "qwen-turbo"],
+    baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+  },
+  {
     provider: "Ollama",
-    models: ["llama3.1", "qwen2.5-coder", "mistral"],
+    models: ["qwen3.5:9b", "qwen2.5-coder", "qwen2.5vl:latest", "llama3.1", "mistral"],
     baseUrl: "http://127.0.0.1:11434/v1"
   },
   {
@@ -439,6 +444,13 @@ function createPreviewApi(): DesktopApi {
       emit(cancelled);
       return cancelled;
     },
+    deleteTask: async (taskId) => {
+      previewState = {
+        ...previewState,
+        tasks: previewState.tasks.filter((item) => item.id !== taskId)
+      };
+      return previewState;
+    },
     onTaskUpdated: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
@@ -450,6 +462,7 @@ const desktopApi = window.hermesDesktop ?? createPreviewApi();
 
 function apiKeyEnvVarForProvider(provider: string): string {
   const normalized = provider.trim().toLowerCase();
+  if (normalized.includes("qwen") || normalized.includes("alibaba") || normalized.includes("dashscope")) return "DASHSCOPE_API_KEY";
   if (normalized.includes("deepseek")) return "DEEPSEEK_API_KEY";
   if (normalized.includes("anthropic") || normalized.includes("claude")) return "ANTHROPIC_API_KEY";
   if (normalized.includes("openrouter")) return "OPENROUTER_API_KEY";
@@ -536,6 +549,12 @@ function fileToDataUrl(file: File): Promise<string> {
 
 function joinLogs(task?: Task): string {
   return task?.logs.join("").replace(/^\[(stdout|stderr)\]\s*/gm, "").trim() || "任务运行后，Hermes 输出会实时显示在这里。";
+}
+
+function formatProcessLogs(task?: Task): string {
+  const value = task?.logs.join("").trim();
+  if (!value) return "等待 Hermes 输出...";
+  return value;
 }
 
 function isOllamaProvider(provider: string): boolean {
@@ -665,7 +684,7 @@ export function App(): JSX.Element {
   const chatEntries = useMemo<ChatEntry[]>(() => {
     if (!activeTask) return [];
 
-    const output = activeTask.result || activeTask.error || joinLogs(activeTask);
+    const output = activeTask.result || activeTask.error || (activeTask.status === "running" ? "Hermes 正在执行，过程进度会在下方实时更新。" : joinLogs(activeTask));
     return [
       {
         id: `${activeTask.id}-user`,
@@ -970,6 +989,16 @@ export function App(): JSX.Element {
     await desktopApi.cancelTask(runningTask.id);
   }
 
+  async function deleteTask(task: Task): Promise<void> {
+    const nextState = await desktopApi.deleteTask(task.id);
+    setState(nextState);
+    setActiveTaskId((current) => {
+      if (current !== task.id) return current;
+      return nextState.tasks[0]?.id ?? null;
+    });
+    setStatusMessage(`任务「${task.title}」已删除。`);
+  }
+
   async function rerunTask(task: Task): Promise<void> {
     setActiveView("workbench");
     setPrompt(task.prompt);
@@ -1141,11 +1170,7 @@ export function App(): JSX.Element {
                           </div>
                         ) : null}
                         <pre>{entry.content}</pre>
-                        {entry.role === "agent" && activeTask?.timeline.length ? (
-                          <div className="inlineTimeline">
-                            <Timeline events={activeTask.timeline} />
-                          </div>
-                        ) : null}
+                        {entry.role === "agent" && activeTask ? <TaskProgress task={activeTask} /> : null}
                       </div>
                     </article>
                   ))}
@@ -1279,6 +1304,7 @@ export function App(): JSX.Element {
               setActiveView("tasks");
             }}
             revealAttachment={revealAttachment}
+            deleteTask={deleteTask}
             rerunTask={rerunTask}
             startRoutine={(routinePrompt) => {
               setPrompt(routinePrompt);
@@ -1341,6 +1367,23 @@ function Timeline({ events }: { events: TaskEvent[] }): JSX.Element {
           <time>{formatTime(event.at)}</time>
         </div>
       ))}
+    </div>
+  );
+}
+
+function TaskProgress({ task }: { task: Task }): JSX.Element {
+  return (
+    <div className="taskProgress">
+      <div className="taskProgressHeader">
+        <Activity size={14} />
+        <strong>执行过程</strong>
+        <span>{task.timeline.length} 个阶段</span>
+      </div>
+      <Timeline events={task.timeline} />
+      <details className="processLog" open={task.status === "running" || task.logs.length > 0}>
+        <summary>进程输出</summary>
+        <pre>{formatProcessLogs(task)}</pre>
+      </details>
     </div>
   );
 }
@@ -1415,6 +1458,7 @@ function SecondaryView({
   openArtifact,
   openTask,
   revealAttachment,
+  deleteTask,
   rerunTask,
   startRoutine
 }: {
@@ -1451,6 +1495,7 @@ function SecondaryView({
   openArtifact: (artifact: ArtifactPreview) => void;
   openTask: (task: Task) => void;
   revealAttachment: (attachment: TaskAttachment) => Promise<void>;
+  deleteTask: (task: Task) => Promise<void>;
   rerunTask: (task: Task) => Promise<void>;
   startRoutine: (prompt: string) => void;
 }): JSX.Element {
@@ -1562,7 +1607,7 @@ function SecondaryView({
   const trustedWorkspaces = state.config.trustedWorkspaces ?? [];
   const recentWorkspaces = state.config.recentWorkspaces ?? [];
   const filteredTasks = state.tasks.filter((task) => taskFilter === "all" || task.status === taskFilter);
-  const visibleArtifacts = (artifacts.length > 0 ? artifacts.map((artifact) => ({ ...artifact, taskTitle: activeTask?.title || "当前任务" })) : allArtifacts)
+  const visibleArtifacts = allArtifacts
     .filter((artifact) => artifactKind === "all" || artifact.kind === artifactKind)
     .filter((artifact) => {
       const query = artifactQuery.trim().toLowerCase();
@@ -1670,9 +1715,14 @@ function SecondaryView({
             <div className="panelTitle">
               <span>{activeTask?.title || "任务详情"}</span>
               {activeTask && (
-                <button className="button secondary compact" type="button" onClick={() => void rerunTask(activeTask)}>
-                  <RotateCcw size={15} /> 复跑
-                </button>
+                <div className="panelTitleActions">
+                  <button className="button secondary compact" type="button" onClick={() => void rerunTask(activeTask)}>
+                    <RotateCcw size={15} /> 复跑
+                  </button>
+                  <button className="button danger compact" type="button" onClick={() => void deleteTask(activeTask)}>
+                    <Trash2 size={15} /> 删除
+                  </button>
+                </div>
               )}
             </div>
             {activeTask ? (

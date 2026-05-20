@@ -183,6 +183,12 @@ function makeTaskTitle(prompt: string): string {
   return compact.length > 24 ? `${compact.slice(0, 24)}...` : compact || "未命名任务";
 }
 
+function previewProcessText(text: string): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  if (!compact) return "收到空输出。";
+  return compact.length > 180 ? `${compact.slice(0, 180)}...` : compact;
+}
+
 function fileMimeType(filePath: string): string {
   return imageMimeByExt[extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
@@ -378,6 +384,7 @@ function hermesHome(): string {
 
 function apiKeyEnvVarForProvider(provider: string): string {
   const normalized = provider.trim().toLowerCase();
+  if (normalized.includes("qwen") || normalized.includes("alibaba") || normalized.includes("dashscope")) return "DASHSCOPE_API_KEY";
   if (normalized.includes("deepseek")) return "DEEPSEEK_API_KEY";
   if (normalized.includes("anthropic") || normalized.includes("claude")) return "ANTHROPIC_API_KEY";
   if (normalized.includes("openrouter")) return "OPENROUTER_API_KEY";
@@ -402,12 +409,16 @@ function isLocalOllamaBaseUrl(baseUrl?: string): boolean {
 function providerForHermes(provider: string, baseUrl?: string): string {
   const normalized = provider.trim().toLowerCase();
   if (normalized === "ollama" || isLocalOllamaBaseUrl(baseUrl)) return "custom";
+  if (normalized === "qwen" || normalized.includes("dashscope")) return "alibaba";
   return provider.trim();
 }
 
 function providerForUi(provider?: string, baseUrl?: string): string | undefined {
   if ((provider || "").trim().toLowerCase() === "custom" && isLocalOllamaBaseUrl(baseUrl)) {
     return "Ollama";
+  }
+  if ((provider || "").trim().toLowerCase() === "alibaba") {
+    return "Qwen";
   }
   return provider;
 }
@@ -893,7 +904,7 @@ async function runTask(input: RunTaskInput): Promise<Task> {
   if (attachments.length) {
     addEvent(task, "附加附件", `已附加 ${attachments.length} 个附件，Hermes 可按路径读取或分析。`, "done");
   }
-  addEvent(task, "启动 Hermes Runner", "通过本机 Hermes CLI 执行。", "active");
+  addEvent(task, "校验 Hermes CLI", "正在确认 Hermes 可执行文件和本地配置。", "active");
   await updateAndPersist(task);
 
   try {
@@ -906,18 +917,32 @@ async function runTask(input: RunTaskInput): Promise<Task> {
     return task;
   }
 
+  addEvent(task, "Hermes CLI 可用", `使用 ${state.config.hermesPath}。`, "done");
   const runInput = { ...input, prompt, attachments };
   const decoratedPrompt = decoratePrompt(runInput);
-  const child = spawn(state.config.hermesPath, hermesArgsForTask(runInput, decoratedPrompt), {
+  const hermesArgs = hermesArgsForTask(runInput, decoratedPrompt);
+  addEvent(
+    task,
+    "准备执行上下文",
+    `${input.workspacePath ? `Workspace：${input.workspacePath}` : "未选择 Workspace"}；模型：${state.config.provider || "Hermes"} / ${state.config.model || "default"}。`,
+    "done"
+  );
+  addEvent(task, "启动 Hermes Runner", `执行命令：${state.config.hermesPath} ${hermesArgs.map((arg) => (arg.length > 80 ? `${arg.slice(0, 80)}...` : arg)).join(" ")}`, "active");
+  await updateAndPersist(task);
+
+  const child = spawn(state.config.hermesPath, hermesArgs, {
     cwd: input.workspacePath || undefined,
     env: process.env
   });
 
   runningTasks.set(task.id, child);
+  addEvent(task, "Hermes 进程已启动", `PID：${child.pid ?? "unknown"}，正在等待模型响应和工具执行。`, "done");
+  await updateAndPersist(task);
 
   const appendLog = async (chunk: Buffer, source: "stdout" | "stderr"): Promise<void> => {
     const text = chunk.toString();
     task.logs.push(`[${source}] ${text}`);
+    addEvent(task, source === "stdout" ? "收到 stdout" : "收到 stderr", previewProcessText(text), source === "stdout" ? "active" : "waiting");
     await updateAndPersist(task);
   };
 
@@ -952,6 +977,7 @@ async function runTask(input: RunTaskInput): Promise<Task> {
       .trim();
 
     task.completedAt = nowIso();
+    addEvent(task, "Hermes 进程退出", `退出码：${code ?? "unknown"}，开始整理输出和产物。`, code === 0 ? "done" : "failed");
 
     if (code === 0) {
       const requestError = rawOutput ? null : await findRecentHermesRequestError(task.createdAt);
@@ -963,6 +989,7 @@ async function runTask(input: RunTaskInput): Promise<Task> {
       } else {
         task.status = "completed";
         task.result = rawOutput || "Hermes 执行完成，但没有返回文本。";
+        addEvent(task, "保存任务产物", "正在保存结果 Markdown 和运行日志。", "done");
         addEvent(task, "任务完成", "Hermes 已返回结果，任务记录和产物已保存。", "done");
 
         const createdAt = nowIso();
@@ -1014,6 +1041,18 @@ async function cancelTask(taskId: string): Promise<Task | null> {
   return task;
 }
 
+async function deleteTask(taskId: string): Promise<AppState> {
+  const child = runningTasks.get(taskId);
+  if (child) {
+    child.kill("SIGTERM");
+    runningTasks.delete(taskId);
+  }
+
+  state.tasks = state.tasks.filter((item) => item.id !== taskId);
+  await persistState();
+  return state;
+}
+
 app.whenReady().then(async () => {
   await loadState();
   createWindow();
@@ -1062,6 +1101,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("hermes:skills:list", () => listSkills());
   ipcMain.handle("task:run", (_event, input: RunTaskInput) => runTask(input));
   ipcMain.handle("task:cancel", (_event, taskId: string) => cancelTask(taskId));
+  ipcMain.handle("task:delete", (_event, taskId: string) => deleteTask(taskId));
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

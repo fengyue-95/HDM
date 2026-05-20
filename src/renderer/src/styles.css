@@ -479,6 +479,13 @@ button:disabled {
   font-weight: 800;
 }
 
+.panelTitleActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .timeline {
   min-height: 0;
   overflow: auto;
@@ -1840,6 +1847,58 @@ body {
 .inlineTimeline {
   margin-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+.taskProgress {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+}
+
+.taskProgressHeader {
+  padding-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.taskProgressHeader strong {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.taskProgress .timeline {
+  max-height: 360px;
+  padding: 0;
+}
+
+.processLog {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #171717;
+  overflow: hidden;
+}
+
+.processLog summary {
+  cursor: pointer;
+  padding: 9px 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.processLog pre {
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  padding: 10px;
+  color: #cfcfcf;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .inlineTimeline .timeline {
